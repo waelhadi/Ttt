@@ -5,25 +5,30 @@ import marshal
 import subprocess
 import ast as a
 import pickle
+import time
+from tqdm import tqdm  # مكتبة شريط التقدم
 
 
 class MultiLayerObfuscator:
     """
     أداة لتشويش كود Python باستخدام تقنيات متعددة: AST + Marshal + Zlib.
     """
-    def __init__(self):
-        pass
+    def __init__(self, layers=5000):
+        self.layers = layers  # عدد الطبقات
 
     def obfuscate(self, code):
         """
-        تشويش الكود باستخدام AST، Marshal و Zlib.
+        تشويش الكود باستخدام AST، Marshal و Zlib مع عدة طبقات.
         """
         print("🔍 الخطوة 1: تشويش الكود باستخدام AST...")
         obfuscated_code = self._obfuscate_with_ast(code)
 
-        print("🔐 الخطوة 2: تشفير وضغط الكود باستخدام Marshal و Zlib...")
-        final_code = self._obfuscate_with_marshal_zlib(obfuscated_code)
+        print(f"🔐 الخطوة 2: إضافة {self.layers} طبقة من Marshal و Zlib...")
+        start_time = time.time()  # وقت بدء العملية
+        final_code = self._obfuscate_with_multiple_layers(obfuscated_code)
+        elapsed_time = time.time() - start_time  # الوقت المنقضي
 
+        print(f"⏱️ الوقت المستغرق لإضافة {self.layers} طبقة: {elapsed_time:.2f} ثانية")
         return final_code
 
     def _obfuscate_with_ast(self, code):
@@ -34,7 +39,7 @@ class MultiLayerObfuscator:
         pickled_objects = self._get_pickled_object_list(code)
         for i, obj in enumerate(pickled_objects):
             compressed = zlib.compress(obj, level=9)
-            obfuscated_code += f"var_{i} = pickle.loads(zlib.decompress({compressed}))\n"
+            obfuscated_code += f"var_{i} = pickle.loads(zlib.decompress({repr(compressed)}))\n"
 
         # إضافة منطق التنفيذ
         obfuscated_code += "\nexec(compile(var_0, '<string>', 'exec'))\n"
@@ -51,38 +56,24 @@ class MultiLayerObfuscator:
                 pickled_objects.append(pickle.dumps(node))
         return pickled_objects
 
+    def _obfuscate_with_multiple_layers(self, code):
+        """
+        إضافة طبقات متعددة من Marshal و Zlib مع شريط تقدم.
+        """
+        for _ in tqdm(range(self.layers), desc="🔄 تشفير الطبقات", unit="طبقة"):
+            code = self._obfuscate_with_marshal_zlib(code)
+        return code
+
     def _obfuscate_with_marshal_zlib(self, code):
         """
         تشفير وضغط الكود باستخدام Marshal و Zlib.
         """
         compressed_code = zlib.compress(marshal.dumps(compile(code, '<string>', 'exec')))
-        obfuscated_code = f"import marshal, zlib\nexec(marshal.loads(zlib.decompress({compressed_code})))"
+        obfuscated_code = f"import marshal, zlib\nexec(marshal.loads(zlib.decompress({repr(compressed_code)})))"
         return obfuscated_code
 
 
-def compile_with_pyarmor(input_file, output_file):
-    """
-    استخدام PyArmor لحماية كود Python.
-    """
-    try:
-        print("🔒 حماية الكود باستخدام PyArmor...")
-        command = [
-            "pyarmor",
-            "pack",
-            "-e",
-            "--clean",
-            "-x", " --disable-restrict-mode",
-            input_file,
-            "-o", os.path.dirname(output_file)
-        ]
-        subprocess.run(command, check=True)
-        print(f"✅ تم حماية الكود بنجاح بواسطة PyArmor. الملف المحمي موجود في: {output_file}")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ خطأ أثناء حماية الكود باستخدام PyArmor: {e}")
-        raise
-
-
-def create_multi_layer_obfuscated_file(input_file, output_file):
+def create_multi_layer_obfuscated_file(input_file, output_file, layers=5000):
     """
     إنشاء ملف Python جديد يحتوي على الكود المشفر والمضغوط.
     """
@@ -92,7 +83,7 @@ def create_multi_layer_obfuscated_file(input_file, output_file):
             code = f.read()
 
         # تشويش الكود باستخدام الطبقات المتعددة
-        obfuscator = MultiLayerObfuscator()
+        obfuscator = MultiLayerObfuscator(layers=layers)
         obfuscated_code = obfuscator.obfuscate(code)
 
         # كتابة الكود المشفر إلى ملف جديد
@@ -123,12 +114,12 @@ def main():
         os.makedirs(output_folder)
 
     try:
-        # الخطوة 1: إنشاء ملف مشفر باستخدام الطبقات المتعددة
-        obfuscated_file = create_multi_layer_obfuscated_file(input_file, output_file)
+        # عدد الطبقات
+        layers = int(input("أدخل عدد الطبقات (مثال: 5000): ").strip())
 
-        # الخطوة 2: حماية الكود باستخدام PyArmor (اختياري)
-        if input("هل تريد حماية إضافية باستخدام PyArmor؟ (y/n): ").strip().lower() == "y":
-            compile_with_pyarmor(obfuscated_file, output_file)
+        print(f"⏳ بدء عملية التشفير مع {layers} طبقة...")
+        # إنشاء ملف مشفر باستخدام الطبقات المتعددة
+        create_multi_layer_obfuscated_file(input_file, output_file, layers=layers)
 
         print(f"\n✅ تم بنجاح! يمكنك تشغيل الكود المحمي من الملف: {output_file}")
     except Exception as e:

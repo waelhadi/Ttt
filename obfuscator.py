@@ -1,54 +1,43 @@
 import os
-import hashlib
+import base64
 import zlib
 import marshal
+import tempfile
 import subprocess
 import ast as a
 import pickle
-import time
-from tqdm import tqdm  # مكتبة شريط التقدم
 
 
 class MultiLayerObfuscator:
-    """
-    أداة لتشويش كود Python باستخدام تقنيات متعددة: AST + Marshal + Zlib.
-    """
-    def __init__(self, layers=5000):
-        self.layers = layers  # عدد الطبقات
+    def __init__(self, layers=500):
+        self.layers = layers  # عدد طبقات التشفير
 
     def obfuscate(self, code):
         """
-        تشويش الكود باستخدام AST، Marshal و Zlib مع عدة طبقات.
+        تشويش الكود باستخدام AST، Marshal، Zlib و Pickle.
         """
         print("🔍 الخطوة 1: تشويش الكود باستخدام AST...")
         obfuscated_code = self._obfuscate_with_ast(code)
 
-        print(f"🔐 الخطوة 2: إضافة {self.layers} طبقة من Marshal و Zlib...")
-        start_time = time.time()  # وقت بدء العملية
-        final_code = self._obfuscate_with_multiple_layers(obfuscated_code)
-        elapsed_time = time.time() - start_time  # الوقت المنقضي
+        print(f"🔐 الخطوة 2: إضافة {self.layers} طبقة تشفير باستخدام Pickle...")
+        obfuscated_code = self._add_multiple_pickle_layers(obfuscated_code)
 
-        print(f"⏱️ الوقت المستغرق لإضافة {self.layers} طبقة: {elapsed_time:.2f} ثانية")
-        return final_code
+        print("🔄 الخطوة 3: إضافة ملف مؤقت للتنفيذ...")
+        wrapped_code = self._wrap_with_temp_file_execution(obfuscated_code)
+
+        return wrapped_code
 
     def _obfuscate_with_ast(self, code):
-        """
-        تشويش الكود باستخدام AST.
-        """
         obfuscated_code = "import pickle\nimport zlib\nimport marshal\n"
         pickled_objects = self._get_pickled_object_list(code)
         for i, obj in enumerate(pickled_objects):
             compressed = zlib.compress(obj, level=9)
-            obfuscated_code += f"var_{i} = pickle.loads(zlib.decompress({repr(compressed)}))\n"
-
-        # إضافة منطق التنفيذ
+            encoded = base64.b64encode(compressed).decode('utf-8')
+            obfuscated_code += f"var_{i} = pickle.loads(zlib.decompress(base64.b64decode('{encoded}')))\n"
         obfuscated_code += "\nexec(compile(var_0, '<string>', 'exec'))\n"
         return obfuscated_code
 
     def _get_pickled_object_list(self, code):
-        """
-        معالجة الكود إلى كائنات pickle.
-        """
         ast_tree = a.parse(code)
         pickled_objects = []
         for node in a.walk(ast_tree):
@@ -56,38 +45,57 @@ class MultiLayerObfuscator:
                 pickled_objects.append(pickle.dumps(node))
         return pickled_objects
 
-    def _obfuscate_with_multiple_layers(self, code):
+    def _add_multiple_pickle_layers(self, code):
         """
-        إضافة طبقات متعددة من Marshal و Zlib مع شريط تقدم.
+        تطبيق 500 طبقة تشفير باستخدام Pickle.
         """
-        for _ in tqdm(range(self.layers), desc="🔄 تشفير الطبقات", unit="طبقة"):
-            code = self._obfuscate_with_marshal_zlib(code)
-        return code
+        print("📦 إنشاء الطبقات...")
+        encoded_code = code
+        for i in range(self.layers):
+            pickled_code = pickle.dumps(encoded_code)
+            encoded_code = base64.b64encode(pickled_code).decode('utf-8')
+            print(f"🔒 الطبقة {i + 1} تمت بنجاح.")
+        
+        # إعادة فك الطبقات للوصول إلى الكود الأصلي
+        obfuscated_code = f"""
+import base64
+import pickle
 
-    def _obfuscate_with_marshal_zlib(self, code):
-        """
-        تشفير وضغط الكود باستخدام Marshal و Zlib.
-        """
-        compressed_code = zlib.compress(marshal.dumps(compile(code, '<string>', 'exec')))
-        obfuscated_code = f"import marshal, zlib\nexec(marshal.loads(zlib.decompress({repr(compressed_code)})))"
+encoded_code = '{encoded_code}'
+for _ in range({self.layers}):
+    encoded_code = pickle.loads(base64.b64decode(encoded_code))
+
+exec(encoded_code)
+"""
         return obfuscated_code
 
+    def _wrap_with_temp_file_execution(self, obfuscated_code):
+        wrapped_code = f"""
+import os
+import tempfile
+import subprocess
 
-def create_multi_layer_obfuscated_file(input_file, output_file, layers=5000):
-    """
-    إنشاء ملف Python جديد يحتوي على الكود المشفر والمضغوط.
-    """
+with tempfile.NamedTemporaryFile(delete=False, suffix=".py", mode='w', encoding='utf-8') as temp_file:
+    temp_file.write(\"\"\"{obfuscated_code}\"\"\")
+    temp_file_path = temp_file.name
+
+try:
+    subprocess.run(["python", temp_file_path], check=True)
+finally:
+    os.remove(temp_file_path)
+"""
+        return wrapped_code
+
+
+def create_multi_layer_obfuscated_file(input_file, output_file, layers=500):
     try:
-        # قراءة الكود الأصلي
         with open(input_file, "r") as f:
             code = f.read()
 
-        # تشويش الكود باستخدام الطبقات المتعددة
-        obfuscator = MultiLayerObfuscator(layers=layers)
+        obfuscator = MultiLayerObfuscator(layers)
         obfuscated_code = obfuscator.obfuscate(code)
 
-        # كتابة الكود المشفر إلى ملف جديد
-        with open(output_file, "w") as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             f.write(obfuscated_code)
         print(f"✅ تم إنشاء الكود المشفر في الملف: {output_file}")
 
@@ -101,26 +109,19 @@ def main():
     print("أداة تشويش وحماية أكواد Python باستخدام تقنيات متعددة")
     print("===========================================================")
 
-    # إدخال اسم الملف الأصلي
     input_file = input("أدخل ملف Python الأصلي لتشفيره (مثل script.py): ").strip()
     if not os.path.isfile(input_file):
         print(f"❌ خطأ: الملف {input_file} غير موجود.")
         return
 
-    # إدخال اسم الملف النهائي
     output_file = input("أدخل اسم الملف النهائي لحفظ الكود المحمي (مثل output.py): ").strip()
     output_folder = os.path.dirname(output_file)
     if output_folder and not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
+    layers = int(input("أدخل عدد طبقات التشفير المطلوبة (مثل 500): ").strip())
     try:
-        # عدد الطبقات
-        layers = int(input("أدخل عدد الطبقات (مثال: 5000): ").strip())
-
-        print(f"⏳ بدء عملية التشفير مع {layers} طبقة...")
-        # إنشاء ملف مشفر باستخدام الطبقات المتعددة
-        create_multi_layer_obfuscated_file(input_file, output_file, layers=layers)
-
+        create_multi_layer_obfuscated_file(input_file, output_file, layers)
         print(f"\n✅ تم بنجاح! يمكنك تشغيل الكود المحمي من الملف: {output_file}")
     except Exception as e:
         print(f"❌ خطأ: {e}")

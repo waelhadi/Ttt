@@ -1,35 +1,56 @@
+import lzma
 import os
+import sys
 
-def remove_comments():
-    # طلب اسم الملف الذي يحتوي على الكود مع التعليقات
-    input_file_name = input("أدخل اسم الملف الذي يحتوي على التعليقات (مع الامتداد .py): ").strip()
-    if not input_file_name.endswith(".py"):
-        print("يجب أن يكون الملف بامتداد .py")
-        return
-
-    # طلب اسم الملف لحفظ الكود بعد حذف التعليقات
-    output_file_name = input("أدخل اسم الملف لحفظ التعديلات (مع الامتداد .py): ").strip()
-    if not output_file_name.endswith(".py"):
-        print("يجب أن يكون الملف بامتداد .py")
-        return
-
+def compress_and_embed_execution(input_file, output_file):
+    """
+    تضغط ملف باستخدام lzma وتضيف شفرة لفك الضغط التلقائي عند تشغيل الملف.
+    """
     try:
-        # قراءة محتوى الملف الأصلي
-        with open(input_file_name, "r", encoding="utf-8") as file:
-            lines = file.readlines()
+        # قراءة البيانات الأصلية من الملف
+        with open(input_file, 'rb') as f_in:
+            original_data = f_in.read()
 
-        # إزالة جميع التعليقات التي تبدأ بـ "#"
-        modified_lines = [line for line in lines if not line.strip().startswith("#")]
+        # ضغط البيانات باستخدام lzma
+        compressed_data = lzma.compress(original_data)
 
-        # كتابة الكود المعدل إلى الملف الجديد
-        with open(output_file_name, "w", encoding="utf-8") as output_file:
-            output_file.writelines(modified_lines)
+        # إنشاء السكربت الذاتي التشغيل
+        executable_code = f"""
+import lzma, os, sys
+compressed_data = {repr(compressed_data)}
 
-        print(f"تم حفظ الكود المعدل في الملف '{output_file_name}' بنجاح بدون التعليقات.")
-    except FileNotFoundError:
-        print(f"الملف '{input_file_name}' غير موجود. تأكد من صحة اسم الملف وحاول مرة أخرى.")
-    except IOError as e:
-        print(f"حدث خطأ أثناء التعامل مع الملف: {e}")
+# فك ضغط البيانات
+decompressed_data = lzma.decompress(compressed_data)
 
-# استدعاء الدالة
-remove_comments()
+# حفظ الملف المؤقت
+temp_file = "temp_extracted_file.py"
+with open(temp_file, "wb") as f_out:
+    f_out.write(decompressed_data)
+
+# تنفيذ الملف
+os.system(f'python {{temp_file}}')
+
+# حذف الملف المؤقت
+os.remove(temp_file)
+"""
+
+        # كتابة السكربت المضغوط
+        with open(output_file, 'w') as f_out:
+            f_out.write(executable_code)
+
+        print(f"تم ضغط الملف وحفظه كأداة تنفيذية في: {output_file}")
+    except Exception as e:
+        print(f"حدث خطأ أثناء عملية الضغط: {e}")
+
+
+if __name__ == "__main__":
+    print("اختر العملية التي ترغب في تنفيذها:")
+    print("1. ضغط ملف وتحويله إلى أداة ذاتية التشغيل")
+    choice = input("أدخل رقم العملية: ").strip()
+
+    if choice == "1":
+        input_file = input("أدخل اسم الملف الذي ترغب في ضغطه (مع الامتداد): ").strip()
+        output_file = input("أدخل اسم الملف المضغوط الناتج (مع الامتداد): ").strip()
+        compress_and_embed_execution(input_file, output_file)
+    else:
+        print("خيار غير صحيح! يرجى اختيار 1.")
